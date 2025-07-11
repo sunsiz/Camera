@@ -1,0 +1,26 @@
+# .NET build outputs
+bin/
+obj/
+publish-*/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# JetBrains Rider
+.idea/
+
+# OS Files
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Settings (keep local)
+settings.json
+
+# Temporary files
+*.tmp
+*.temp

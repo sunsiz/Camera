@@ -1,0 +1,42 @@
+# Camera Overlay v1.9.1 Release Notes
+
+## Enhanced Device Validation (v1.9.1)
+
+### Key Improvements
+- **Improved Device Validation Logic**: Enhanced the `ValidateDeviceDetails()` method to use multiple approaches for camera validation
+- **Better Error Handling**: More robust device lookup with fallback methods
+- **Detailed Debug Output**: Enhanced debugging information for troubleshooting camera detection issues
+
+### Technical Changes
+- Multiple device validation approaches:
+  1. Direct DeviceID lookup (primary method)
+  2. Name-based search (fallback method)  
+  3. Assumption of validity (if device passed initial detection)
+- Better error handling during validation
+- More comprehensive debug logging
+
+### Expected Behavior
+✅ **CAMERA READY Status**: Valid cameras should now properly show green "CAMERA READY" status instead of yellow "CAMERA DETECTED"
+
+✅ **DFU Filtering**: Non-functional DFU (Device Firmware Update) devices continue to be filtered out
+
+✅ **Debug Console**: Right-click to toggle detailed diagnostic information
+
+### Testing Instructions
+1. Run `run-camera-overlay-v1.9.1.bat`
+2. Look for green "✅ CAMERA READY" status on detected cameras
+3. Check debug console for detailed validation steps
+4. Verify DFU devices are not listed
+
+### Known Limitations
+- Video feed is still placeholder (requires DirectShow/MediaFoundation integration)
+- Actual camera capture would need additional API implementation
+- This version focuses on proper device detection and status display
+
+### Version History
+- v1.9.1: Enhanced device validation for proper "CAMERA READY" status
+- v1.9.0: Added comprehensive camera access validation methods
+- v1.8.0: Integrated debug console for real-time diagnostics
+- v1.7.0: Enhanced DFU device filtering
+
+Report any issues or unexpected behavior via debug console output.

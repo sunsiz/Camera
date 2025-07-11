@@ -1,0 +1,27 @@
+<Window x:Class="CameraOverlay.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Camera Overlay" 
+        Height="240" 
+        Width="320"
+        MinHeight="100"
+        MinWidth="100"
+        WindowStyle="None"
+        ResizeMode="CanResizeWithGrip"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown"
+        MouseMove="Window_MouseMove"
+        MouseLeftButtonUp="Window_MouseLeftButtonUp"
+        MouseRightButtonDown="Window_MouseRightButtonDown"
+        SizeChanged="Window_SizeChanged">
+    
+    <Grid Name="MainGrid" Background="Black">
+        <Grid.Effect>
+            <DropShadowEffect Color="Black" Direction="315" ShadowDepth="5" Opacity="0.5" BlurRadius="10"/>
+        </Grid.Effect>
+        
+        <!-- Camera content will be added here programmatically -->
+    </Grid>
+</Window>
