@@ -17,6 +17,7 @@ namespace CameraOverlay
         private RealCameraCapture realCamera;
         private DirectShowCameraCapture directShowCamera;
         private WindowsMediaFoundationCapture wmfCamera;
+        private OpenCVCameraCapture openCVCamera; // New OpenCV camera
         private List<CameraInfo> availableCameras;
         private CameraInfo currentCamera;
         private string currentResolution;
@@ -24,6 +25,7 @@ namespace CameraOverlay
         private bool useRealCamera = true;
         private bool useDirectShow = true;
         private bool useWMF = true;
+        private bool useOpenCV = true; // Enable OpenCV by default
 
         public CameraInfo CurrentCamera => currentCamera;
         public string CurrentResolution => currentResolution;
@@ -87,6 +89,20 @@ namespace CameraOverlay
                 {
                     Stretch = Stretch.Uniform
                 };
+
+                // Try OpenCV camera first (highest priority - real camera feed)
+                Console.WriteLine("[DEBUG] Creating OpenCVCameraCapture instance...");
+                try
+                {
+                    openCVCamera = new OpenCVCameraCapture();
+                    Console.WriteLine("[DEBUG] OpenCVCameraCapture created successfully");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ERROR] Failed to create OpenCVCameraCapture: {ex.Message}");
+                    openCVCamera = null;
+                    useOpenCV = false;
+                }
                 
                 Console.WriteLine("[DEBUG] Creating RealCameraCapture instance...");
                 try
@@ -102,7 +118,7 @@ namespace CameraOverlay
                     useRealCamera = false;
                 }
 
-                // Try DirectShow camera as primary option
+                // Try DirectShow camera as backup option
                 Console.WriteLine("[DEBUG] Creating DirectShowCameraCapture instance...");
                 try
                 {
@@ -132,7 +148,7 @@ namespace CameraOverlay
                     useWMF = false;
                 }
                 
-                Console.WriteLine("[DEBUG] MediaElement and real camera components created successfully");
+                Console.WriteLine("[DEBUG] All camera components initialized");
             }
             catch (Exception ex)
             {
@@ -141,6 +157,7 @@ namespace CameraOverlay
                 this.Background = Brushes.Black;
                 cameraImage = new Image { Stretch = Stretch.Uniform };
                 useRealCamera = false;
+                useOpenCV = false;
             }
         }
 
@@ -151,9 +168,44 @@ namespace CameraOverlay
             
             try
             {
-                var cameras = DetectCamerasWithWMI();
-                availableCameras.AddRange(cameras);
-                Console.WriteLine($"[DEBUG] WMI detection found {cameras.Count} cameras");
+                // First, try OpenCV camera detection (most reliable for actual camera access)
+                if (useOpenCV)
+                {
+                    Console.WriteLine("[DEBUG] Attempting OpenCV camera detection...");
+                    try
+                    {
+                        var openCVTask = OpenCVCameraCapture.GetAvailableCameraCountAsync();
+                        int openCVCameraCount = openCVTask.Result;
+                        Console.WriteLine($"[DEBUG] OpenCV detected {openCVCameraCount} accessible cameras");
+                        
+                        for (int i = 0; i < openCVCameraCount; i++)
+                        {
+                            availableCameras.Add(new CameraInfo
+                            {
+                                Name = $"Camera {i + 1} (OpenCV)",
+                                DevicePath = $"opencv_{i}",
+                                Index = i
+                            });
+                            Console.WriteLine($"[SUCCESS] Added OpenCV camera {i}: Camera {i + 1}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] OpenCV camera detection failed: {ex.Message}");
+                    }
+                }
+
+                // Also try WMI detection for additional camera information
+                var wmiCameras = DetectCamerasWithWMI();
+                foreach (var camera in wmiCameras)
+                {
+                    // Only add if not already detected by OpenCV
+                    if (!availableCameras.Any(c => c.Name.Contains("Camera") && c.Index == camera.Index))
+                    {
+                        availableCameras.Add(camera);
+                    }
+                }
+                Console.WriteLine($"[DEBUG] WMI detection found {wmiCameras.Count} additional cameras");
             }
             catch (Exception ex)
             {
@@ -174,7 +226,7 @@ namespace CameraOverlay
             Console.WriteLine($"[DEBUG] Camera detection completed. Total cameras available: {availableCameras.Count}");
             foreach (var camera in availableCameras)
             {
-                Console.WriteLine($"  - {camera.Name} (Path: {camera.DevicePath})");
+                Console.WriteLine($"  - {camera.Name} (Path: {camera.DevicePath}, Index: {camera.Index})");
             }
         }
 
@@ -349,6 +401,14 @@ namespace CameraOverlay
         public void SelectCamera(CameraInfo camera)
         {
             if (camera == null) return;
+            
+            // Stop current camera if OpenCV is active
+            if (useOpenCV && openCVCamera != null && openCVCamera.IsCapturing)
+            {
+                Console.WriteLine("[DEBUG] Stopping current OpenCV camera before switching");
+                openCVCamera.StopCapture();
+            }
+            
             currentCamera = camera;
             StartCamera();
         }
@@ -412,7 +472,38 @@ namespace CameraOverlay
                 
                 if (isAccessible)
                 {
-                    // Try Windows Media Foundation first (most reliable for modern cameras)
+                    // Try OpenCV first (highest priority - real camera capture)
+                    if (useOpenCV && openCVCamera != null)
+                    {
+                        Console.WriteLine("[DEBUG] Attempting OpenCV camera initialization...");
+                        try
+                        {
+                            var startTask = openCVCamera.StartCaptureAsync(currentCamera.Index, 640, 480);
+                            bool openCVInit = startTask.Result; // Wait for async operation
+                            Console.WriteLine($"[DEBUG] OpenCV initialization result: {openCVInit}");
+                            
+                            if (openCVInit)
+                            {
+                                Console.WriteLine($"[SUCCESS] OpenCV camera {currentCamera.Name} is ready and capturing live video");
+                                
+                                // Set the OpenCV camera as the content
+                                this.Content = openCVCamera;
+                                return true;
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[WARNING] OpenCV initialization failed, trying WMF...");
+                                useOpenCV = false;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[ERROR] Exception during OpenCV initialization: {ex.Message}");
+                            useOpenCV = false;
+                        }
+                    }
+
+                    // Try Windows Media Foundation as backup
                     if (useWMF && wmfCamera != null)
                     {
                         Console.WriteLine("[DEBUG] Attempting Windows Media Foundation camera initialization...");
@@ -815,6 +906,11 @@ namespace CameraOverlay
             try
             {
                 Console.WriteLine("[DEBUG] Disposing VideoCaptureElement and releasing camera resources...");
+                
+                // Stop and dispose OpenCV camera first
+                openCVCamera?.StopCapture();
+                openCVCamera?.Dispose();
+                openCVCamera = null;
                 
                 // Stop and dispose Windows Media Foundation camera
                 wmfCamera?.StopCapture();

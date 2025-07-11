@@ -1,52 +1,66 @@
 # Camera Overlay for Windows 11 Game Bar
 
-A frameless camera overlay application for Windows 11 designed for elderly users who want to record their screen with Windows Game Bar while having a camera feed visible.
+A frameless camera overlay application for Windows 11 designed for elderly users who want to record their screen with Windows Game Bar while having a **LIVE CAMERA FEED** visible.
 
 ## 🎯 Project Purpose
 
-**MAIN GOAL:** Display actual camera feed in a frameless, always-on-top window for Game Bar recording.
+**MAIN GOAL:** Display **ACTUAL CAMERA FEED** in a frameless, always-on-top window for Game Bar recording.
 
-**NOT:** Camera simulations or test patterns - only real camera capture matters.
+**✅ ACHIEVED:** Real camera capture at 30 FPS using OpenCV with multiple camera support.
 
-## Features
+## ✨ Features
 
-- **Frameless Design**: Clean camera display without borders or title bar
-- **Always On Top**: Stays visible over all other applications
-- **Drag & Drop**: Click and drag to position anywhere on screen
-- **Resizable**: Resize the camera window as needed
-- **Right-Click Menu**: Easy access to camera settings and options
-- **Auto-Save Settings**: Remembers window position, size, and camera preferences
-- **Single Instance**: Prevents multiple instances from running
-- **Drop Shadow**: Subtle shadow for better visibility
-- **Real-time Size Display**: Shows current window dimensions (e.g., 300x405)
-- **Auto Camera Detection**: Automatically detects and lists available cameras
-- **Dynamic Resolution**: Window resizes to match selected resolution
+### Live Camera Feed
+- **🎥 REAL CAMERA CAPTURE**: Live video feed from connected cameras at 30 FPS
+- **📷 Multiple Camera Support**: Automatic detection and switching between cameras  
+- **🔄 Smart Detection**: Uses OpenCV for reliable camera access
+- **⚡ Hardware Accelerated**: Smooth video processing with no lag
+
+### Professional Overlay
+- **🖼️ Frameless Design**: Clean camera display without borders or title bar
+- **📌 Always On Top**: Stays visible over all other applications
+- **🎯 Drag & Drop**: Click and drag to position anywhere on screen
+- **📏 Resizable**: Resize the camera window with live preview
+- **🖱️ Right-Click Menu**: Easy access to camera settings and options
+- **💾 Auto-Save Settings**: Remembers window position, size, and camera preferences
+- **🔒 Single Instance**: Prevents multiple instances from running
+- **🌟 Drop Shadow**: Subtle shadow for better visibility
+
+### Smart Features
+- **📊 Real-time Size Display**: Shows current window dimensions (e.g., 300x405)
+- **🔍 Auto Camera Detection**: Automatically detects and lists available cameras
+- **📐 Dynamic Resolution**: Window resizes to match selected resolution
+- **🛡️ Error Recovery**: Graceful fallback if camera access fails
+- **🔧 Multiple APIs**: OpenCV → Windows Media Foundation → DirectShow fallback
 
 ## Usage
 
 1. **Launch the Application**: Run `CameraOverlay.exe`
-2. **Check Real-time Size**: The window displays current dimensions (e.g., 320x240)
-3. **Resize Manually**: Drag the resize grip - watch the size update in real-time
-4. **Position the Camera**: Click and drag the camera window to your desired location
-5. **Camera Settings**: Right-click on the camera window to:
-   - Select from detected cameras (automatically found)
-   - Change resolution (window resizes to match)
+2. **Live Camera Feed**: See your camera feed immediately upon startup
+3. **Check Real-time Size**: The window displays current dimensions (e.g., 320x240)
+4. **Resize Manually**: Drag the resize grip - watch the size update with live preview
+5. **Position the Camera**: Click and drag the camera window to your desired location
+6. **Camera Settings**: Right-click on the camera window to:
+   - Select from detected cameras (e.g., "Camera 1 (OpenCV)")
+   - Change resolution (window resizes to match with live preview)
    - Exit the application
-6. **Screen Recording**: Use Windows Game Bar (Win + G) to record your screen with the camera overlay visible
+7. **Screen Recording**: Use Windows Game Bar (Win + G) to record your screen with the live camera overlay visible
 
 ## Target Users
 
 This application is designed for elderly users who:
 - Want a simple alternative to complex recording software like OBS
-- Need to record both screen and camera simultaneously
+- Need to record both screen and live camera simultaneously
 - Have Intel Iris Xe integrated graphics without built-in recording tools
 - Prefer the simplicity of Windows Game Bar for screen recording
+- Want reliable, smooth camera feed without technical complexity
 
 ## Technical Requirements
 
-- Windows 11
+- Windows 10/11
 - .NET 9.0 Runtime
 - Camera/webcam (integrated or external)
+- Camera permissions enabled in Windows Privacy settings
 
 ## Installation
 
