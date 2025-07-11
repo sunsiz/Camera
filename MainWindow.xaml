@@ -10,12 +10,7 @@
         ResizeMode="CanResizeWithGrip"
         AllowsTransparency="True"
         Background="Transparent"
-        Topmost="True"
-        MouseLeftButtonDown="Window_MouseLeftButtonDown"
-        MouseMove="Window_MouseMove"
-        MouseLeftButtonUp="Window_MouseLeftButtonUp"
-        MouseRightButtonDown="Window_MouseRightButtonDown"
-        SizeChanged="Window_SizeChanged">
+        Topmost="True">
     
     <Grid Name="MainGrid" Background="Black">
         <Grid.Effect>

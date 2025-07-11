@@ -1,14 +1,11 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Runtime.InteropServices;
-using System.Windows.Threading;
-using System.Collections.Generic;
-using System.Linq;
+using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 
@@ -16,231 +13,191 @@ namespace CameraOverlay
 {
     public partial class MainWindow : Window
     {
-        private VideoCaptureElement videoCaptureElement;
-        private bool isDragging = false;
+        private OpenCVCameraCapture cameraCapture;
         private Point dragStartPoint;
-        private DispatcherTimer saveTimer;
-        private string deferredResolution;
-        private const string SettingsFile = "camera_settings.json";
+        private CameraSettings settings;
+        private readonly string settingsPath = "camera_settings.json";
 
-        // Win32 API constants for always on top
-        private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_TOPMOST = 0x00000008;
-        private const int WS_EX_TOOLWINDOW = 0x00000080;
+        // Win32 API imports for always-on-top
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
-        [DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
 
-        [DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-        
-        [DllImport("kernel32.dll")]
-        private static extern IntPtr GetConsoleWindow();
-        
-        [DllImport("user32.dll")]
-        private static extern bool IsWindowVisible(IntPtr hWnd);
+        // Add fields for aspect ratio control
+        private bool keepAspectRatio = true;
+        private double originalAspectRatio = 4.0 / 3.0; // Default 4:3 ratio
 
         public MainWindow()
         {
-            // Show debug console for detailed logging
-            DebugConsole.ShowConsole();
-            Console.WriteLine("[DEBUG] MainWindow constructor started");
-            
-            InitializeComponent();
-            LoadSettings();
-            SetupWindow();
-            InitializeCamera();
-            SetupSaveTimer();
-            
-            // Apply deferred settings after everything is initialized
-            if (!string.IsNullOrEmpty(deferredResolution))
+            try
             {
-                videoCaptureElement.SetResolution(deferredResolution);
-                ApplyResolutionToWindow(deferredResolution);
-                deferredResolution = null;
+                Console.WriteLine("[DEBUG] MainWindow constructor starting...");
+                
+                InitializeComponent();
+                LoadSettings();
+                SetupWindow();
+                
+                // Wire up event handlers programmatically
+                this.MouseLeftButtonDown += Window_MouseLeftButtonDown;
+                this.MouseRightButtonDown += Window_MouseRightButtonDown;
+                this.Loaded += Window_Loaded;
+                this.Closing += Window_Closing;
+                this.SizeChanged += Window_SizeChanged;
+                
+                Console.WriteLine("[DEBUG] MainWindow constructor - InitializeComponent completed");
+                
+                // Initialize camera capture asynchronously
+                _ = InitializeCameraAsync();
+                
+                Console.WriteLine("[DEBUG] MainWindow constructor completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CRITICAL ERROR] MainWindow constructor failed: {ex.Message}");
+                Console.WriteLine($"[CRITICAL ERROR] Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
 
         private void SetupWindow()
         {
-            // Remove window chrome
-            this.WindowStyle = WindowStyle.None;
-            this.ResizeMode = ResizeMode.CanResizeWithGrip;
-            this.AllowsTransparency = true;
-            this.Background = Brushes.Transparent;
-            this.Topmost = true;
+            Console.WriteLine("[DEBUG] SetupWindow starting...");
+            
+            // Apply saved settings (with defaults)
+            Left = settings?.WindowLeft ?? 200;
+            Top = settings?.WindowTop ?? 200;
+            Width = settings?.WindowWidth ?? 400;
+            Height = settings?.WindowHeight ?? 300;
 
+            // Set window properties for overlay mode
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+            Background = Brushes.Transparent;
+            Topmost = true;
+            ShowInTaskbar = false;
+            
+            // Add resize grip
+            ResizeMode = ResizeMode.CanResizeWithGrip;
+            
             // Add drop shadow effect
-            this.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
-                Direction = 315,
+                BlurRadius = 10,
                 ShadowDepth = 5,
-                Opacity = 0.5,
-                BlurRadius = 10
+                Opacity = 0.5
             };
-
-            // Set window to always on top using Win32 API
-            this.Loaded += MainWindow_Loaded;
-        }
-
-        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
-        {
-            IntPtr hWnd = new WindowInteropHelper(this).Handle;
-            int exStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
-            SetWindowLong(hWnd, GWL_EXSTYLE, exStyle | WS_EX_TOPMOST);
-        }
-
-        private void InitializeCamera()
-        {
-            videoCaptureElement = new VideoCaptureElement();
-            MainGrid.Children.Add(videoCaptureElement);
-        }
-
-        private void SetupSaveTimer()
-        {
-            saveTimer = new DispatcherTimer();
-            saveTimer.Interval = TimeSpan.FromSeconds(2);
-            saveTimer.Tick += SaveTimer_Tick;
-        }
-
-        private void SaveTimer_Tick(object sender, EventArgs e)
-        {
-            SaveSettings();
-            saveTimer.Stop();
-        }
-
-        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            if (e.ChangedButton == MouseButton.Left)
-            {
-                isDragging = true;
-                dragStartPoint = e.GetPosition(this);
-                this.DragMove();
-                
-                // Start timer to save position
-                saveTimer.Stop();
-                saveTimer.Start();
-            }
-        }
-
-        private void Window_MouseMove(object sender, MouseEventArgs e)
-        {
-            if (isDragging && e.LeftButton == MouseButtonState.Pressed)
-            {
-                // Window is being dragged
-                saveTimer.Stop();
-                saveTimer.Start();
-            }
-        }
-
-        private void Window_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            isDragging = false;
-        }
-
-        private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            // Refresh camera display to show new size
-            videoCaptureElement?.RefreshDisplay();
             
-            // Start timer to save size
-            saveTimer.Stop();
-            saveTimer.Start();
+            Console.WriteLine("[DEBUG] SetupWindow completed");
         }
 
-        private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
-        {
-            ShowContextMenu();
-        }
-
-        private void ShowContextMenu()
-        {
-            ContextMenu contextMenu = new ContextMenu();
-            
-            // Camera selection
-            MenuItem cameraMenuItem = new MenuItem { Header = "Select Camera" };
-            var cameras = videoCaptureElement.GetAvailableCameras();
-            
-            foreach (var camera in cameras)
-            {
-                MenuItem cameraItem = new MenuItem { Header = camera.Name, Tag = camera };
-                cameraItem.Click += (s, e) => {
-                    videoCaptureElement.SelectCamera(camera);
-                    SaveSettings();
-                };
-                cameraMenuItem.Items.Add(cameraItem);
-            }
-            contextMenu.Items.Add(cameraMenuItem);
-
-            // Resolution selection
-            MenuItem resolutionMenuItem = new MenuItem { Header = "Resolution" };
-            var resolutions = videoCaptureElement.GetAvailableResolutions();
-            
-            foreach (var resolution in resolutions)
-            {
-                MenuItem resItem = new MenuItem { Header = resolution, Tag = resolution };
-                resItem.Click += (s, e) => {
-                    videoCaptureElement.SetResolution(resolution);
-                    ApplyResolutionToWindow(resolution);
-                    SaveSettings();
-                };
-                resolutionMenuItem.Items.Add(resItem);
-            }
-            contextMenu.Items.Add(resolutionMenuItem);
-
-            contextMenu.Items.Add(new Separator());
-            
-            // Debug Console toggle
-            MenuItem debugMenuItem = new MenuItem { Header = "Toggle Debug Console" };
-            debugMenuItem.Click += (s, e) => {
-                // Check if console is visible (simplified check)
-                IntPtr consoleWindow = GetConsoleWindow();
-                if (consoleWindow != IntPtr.Zero && IsWindowVisible(consoleWindow))
-                {
-                    DebugConsole.HideConsole();
-                }
-                else
-                {
-                    DebugConsole.ShowConsole();
-                }
-            };
-            contextMenu.Items.Add(debugMenuItem);
-
-            contextMenu.Items.Add(new Separator());
-
-            // Exit
-            MenuItem exitMenuItem = new MenuItem { Header = "Exit" };
-            exitMenuItem.Click += (s, e) => {
-                SaveSettings();
-                Application.Current.Shutdown();
-            };
-            contextMenu.Items.Add(exitMenuItem);
-
-            contextMenu.IsOpen = true;
-        }
-
-        private void SaveSettings()
+        private async Task InitializeCameraAsync()
         {
             try
             {
-                var settings = new CameraSettings
+                Console.WriteLine("[DEBUG] InitializeCameraAsync starting...");
+                
+                // Create camera capture element
+                cameraCapture = new OpenCVCameraCapture
                 {
-                    WindowLeft = this.Left,
-                    WindowTop = this.Top,
-                    WindowWidth = this.Width,
-                    WindowHeight = this.Height,
-                    SelectedCameraName = videoCaptureElement.CurrentCamera?.Name,
-                    SelectedResolution = videoCaptureElement.CurrentResolution
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Stretch
                 };
-
-                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(SettingsFile, json);
+                
+                Console.WriteLine("[DEBUG] OpenCVCameraCapture instance created");
+                
+                // Add to main grid
+                Grid mainGrid = this.FindName("MainGrid") as Grid;
+                if (mainGrid != null)
+                {
+                    Console.WriteLine("[DEBUG] Found MainGrid, clearing and adding camera capture");
+                    mainGrid.Children.Clear();
+                    mainGrid.Children.Add(cameraCapture);
+                }
+                else
+                {
+                    Console.WriteLine("[WARNING] MainGrid not found, creating new grid");
+                    // Create grid if it doesn't exist
+                    var grid = new Grid();
+                    grid.Children.Add(cameraCapture);
+                    this.Content = grid;
+                }
+                
+                Console.WriteLine("[DEBUG] Camera capture element added to grid");
+                
+                // Get available camera count
+                Console.WriteLine("[DEBUG] Checking for available cameras...");
+                int cameraCount = await OpenCVCameraCapture.GetAvailableCameraCountAsync();
+                Console.WriteLine($"[DEBUG] Available cameras: {cameraCount}");
+                
+                if (cameraCount > 0)
+                {
+                    // Start camera capture with default settings
+                    int cameraIndex = 0;  // Default to first camera
+                    int width = 640;      // Default resolution
+                    int height = 480;
+                    
+                    // Set the original aspect ratio based on camera resolution
+                    originalAspectRatio = (double)width / height;
+                    
+                    Console.WriteLine($"[DEBUG] Starting camera capture: index={cameraIndex}, resolution={width}x{height}, aspect ratio={originalAspectRatio:F2}");
+                    
+                    bool success = await cameraCapture.StartCaptureAsync(cameraIndex, width, height);
+                    
+                    if (success)
+                    {
+                        Console.WriteLine("[DEBUG] ✓ Camera capture started successfully - you should see camera feed!");
+                    }
+                    else
+                    {
+                        Console.WriteLine("[ERROR] ✗ Failed to start camera capture");
+                        AddErrorMessage("Failed to start camera");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[WARNING] ⚠ No cameras available");
+                    AddErrorMessage("No cameras detected\n\nPlease check:\n• Camera is connected\n• Camera drivers are installed\n• Camera is not in use by another app");
+                }
             }
             catch (Exception ex)
             {
-                // Silently fail - settings are not critical
-                System.Diagnostics.Debug.WriteLine($"Failed to save settings: {ex.Message}");
+                Console.WriteLine($"[ERROR] InitializeCameraAsync failed: {ex.Message}");
+                Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+                AddErrorMessage($"Camera initialization failed:\n{ex.Message}");
+            }
+        }
+
+        private void AddErrorMessage(string message)
+        {
+            Console.WriteLine($"[DEBUG] Adding error message to UI: {message}");
+            
+            var errorText = new TextBlock
+            {
+                Text = message,
+                Foreground = Brushes.White,
+                FontSize = 14,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = Brushes.Red,
+                Padding = new Thickness(10),
+                TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            };
+            
+            Grid mainGrid = this.FindName("MainGrid") as Grid;
+            if (mainGrid != null)
+            {
+                mainGrid.Children.Clear();
+                mainGrid.Children.Add(errorText);
+            }
+            else
+            {
+                this.Content = errorText;
             }
         }
 
@@ -248,91 +205,263 @@ namespace CameraOverlay
         {
             try
             {
-                if (File.Exists(SettingsFile))
+                if (File.Exists(settingsPath))
                 {
-                    string json = File.ReadAllText(SettingsFile);
-                    var settings = JsonSerializer.Deserialize<CameraSettings>(json);
+                    string json = File.ReadAllText(settingsPath);
+                    settings = JsonSerializer.Deserialize<CameraSettings>(json);
+                    Console.WriteLine("[DEBUG] Settings loaded successfully");
+                }
+                else
+                {
+                    settings = new CameraSettings();
+                    Console.WriteLine("[DEBUG] Using default settings");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to load settings: {ex.Message}");
+                settings = new CameraSettings();
+            }
+        }
 
-                    if (settings != null)
+        private void SaveSettings()
+        {
+            try
+            {
+                if (settings != null)
+                {
+                    settings.WindowLeft = Left;
+                    settings.WindowTop = Top;
+                    settings.WindowWidth = Width;
+                    settings.WindowHeight = Height;
+                    
+                    string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(settingsPath, json);
+                    Console.WriteLine("[DEBUG] Settings saved successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to save settings: {ex.Message}");
+            }
+        }
+
+        // Event handlers
+        private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            Console.WriteLine("[DEBUG] Left mouse button clicked - starting drag");
+            if (e.ClickCount == 1)
+            {
+                dragStartPoint = e.GetPosition(this);
+                this.DragMove();
+            }
+        }
+
+        private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            Console.WriteLine("[DEBUG] Right mouse button clicked - showing context menu");
+            ShowContextMenu();
+        }
+
+        private async void ShowContextMenu()
+        {
+            try
+            {
+                var contextMenu = new ContextMenu();
+                
+                // Camera selection menu
+                var cameraMenuItem = new MenuItem { Header = "Camera" };
+                await PopulateCameraMenu(cameraMenuItem);
+                contextMenu.Items.Add(cameraMenuItem);
+                
+                // Note: Resolution menu removed - users can now freely resize the window
+                // by dragging the resize grip without camera restart issues
+                
+                // Information menu item
+                var infoMenuItem = new MenuItem 
+                { 
+                    Header = "💡 Tip: Drag corners to resize window",
+                    IsEnabled = false // Make it look like informational text
+                };
+                contextMenu.Items.Add(infoMenuItem);
+                
+                // Separator
+                contextMenu.Items.Add(new Separator());
+                
+                // Keep aspect ratio toggle
+                var aspectRatioMenuItem = new MenuItem 
+                { 
+                    Header = "Keep Aspect Ratio",
+                    IsCheckable = true,
+                    IsChecked = true // Default to true
+                };
+                aspectRatioMenuItem.Click += AspectRatio_Click;
+                contextMenu.Items.Add(aspectRatioMenuItem);
+                
+                // Separator
+                contextMenu.Items.Add(new Separator());
+                
+                // Exit menu
+                var exitMenuItem = new MenuItem { Header = "Exit" };
+                exitMenuItem.Click += (s, e) => 
+                {
+                    Console.WriteLine("[DEBUG] Exit menu clicked - shutting down");
+                    Application.Current.Shutdown();
+                };
+                contextMenu.Items.Add(exitMenuItem);
+                
+                contextMenu.IsOpen = true;
+                Console.WriteLine("[DEBUG] Context menu opened");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] ShowContextMenu failed: {ex.Message}");
+            }
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            Console.WriteLine("[DEBUG] Window_Loaded event - setting always on top");
+            // Set always on top
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            Console.WriteLine("[DEBUG] MainWindow closing...");
+            
+            SaveSettings();
+            
+            if (cameraCapture != null)
+            {
+                Console.WriteLine("[DEBUG] Disposing camera capture...");
+                cameraCapture.StopCapture();
+                cameraCapture.Dispose();
+            }
+            
+            Console.WriteLine("[DEBUG] MainWindow closed");
+        }
+
+        private async Task PopulateCameraMenu(MenuItem cameraMenuItem)
+        {
+            try
+            {
+                Console.WriteLine("[DEBUG] Populating camera menu...");
+                
+                // Get available camera count
+                int cameraCount = await OpenCVCameraCapture.GetAvailableCameraCountAsync();
+                
+                if (cameraCount == 0)
+                {
+                    var noCameraItem = new MenuItem { Header = "No cameras detected", IsEnabled = false };
+                    cameraMenuItem.Items.Add(noCameraItem);
+                }
+                else
+                {
+                    for (int i = 0; i < cameraCount; i++)
                     {
-                        // Restore window position and size
-                        this.Left = settings.WindowLeft;
-                        this.Top = settings.WindowTop;
-                        this.Width = settings.WindowWidth;
-                        this.Height = settings.WindowHeight;
+                        var cameraItem = new MenuItem 
+                        { 
+                            Header = $"Camera {i + 1}",
+                            IsCheckable = true,
+                            IsChecked = (cameraCapture?.CameraIndex == i)
+                        };
                         
-                        // Restore camera settings
-                        if (!string.IsNullOrEmpty(settings.SelectedResolution))
-                        {
-                            deferredResolution = settings.SelectedResolution;
-                        }
-                        
-                        // Ensure window is visible on screen
-                        EnsureWindowVisible();
+                        int cameraIndex = i; // Capture for closure
+                        cameraItem.Click += async (s, e) => await SwitchCamera(cameraIndex);
+                        cameraMenuItem.Items.Add(cameraItem);
+                    }
+                }
+                
+                Console.WriteLine($"[DEBUG] Camera menu populated with {cameraCount} cameras");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to populate camera menu: {ex.Message}");
+                var errorItem = new MenuItem { Header = "Error loading cameras", IsEnabled = false };
+                cameraMenuItem.Items.Add(errorItem);
+            }
+        }
+
+        private async Task SwitchCamera(int cameraIndex)
+        {
+            try
+            {
+                Console.WriteLine($"[DEBUG] Switching to camera {cameraIndex}...");
+                
+                if (cameraCapture != null)
+                {
+                    // Stop current camera
+                    cameraCapture.StopCapture();
+                    
+                    // Start new camera with current resolution
+                    bool success = await cameraCapture.StartCaptureAsync(cameraIndex, 
+                        (int)this.Width, (int)this.Height);
+                    
+                    if (success)
+                    {
+                        Console.WriteLine($"[DEBUG] Successfully switched to camera {cameraIndex}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[ERROR] Failed to switch to camera {cameraIndex}");
+                        AddErrorMessage($"Failed to switch to camera {cameraIndex + 1}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                // Silently fail - use default settings
-                System.Diagnostics.Debug.WriteLine($"Failed to load settings: {ex.Message}");
-                SetDefaultSize();
+                Console.WriteLine($"[ERROR] SwitchCamera failed: {ex.Message}");
+                AddErrorMessage($"Error switching camera: {ex.Message}");
             }
         }
 
-        private void SetDefaultSize()
+        private void AspectRatio_Click(object sender, RoutedEventArgs e)
         {
-            this.Width = 320;
-            this.Height = 240;
-            this.Left = SystemParameters.WorkArea.Width - this.Width - 20;
-            this.Top = 20;
-        }
-
-        private void EnsureWindowVisible()
-        {
-            // Make sure window is visible on screen
-            if (this.Left < 0) this.Left = 0;
-            if (this.Top < 0) this.Top = 0;
-            if (this.Left + this.Width > SystemParameters.WorkArea.Width)
-                this.Left = SystemParameters.WorkArea.Width - this.Width;
-            if (this.Top + this.Height > SystemParameters.WorkArea.Height)
-                this.Top = SystemParameters.WorkArea.Height - this.Height;
-        }
-
-        private void ApplyResolutionToWindow(string resolution)
-        {
-            if (string.IsNullOrEmpty(resolution)) return;
-            
-            try
+            var menuItem = sender as MenuItem;
+            if (menuItem != null)
             {
-                // Parse resolution (e.g., "1280x720")
-                var parts = resolution.Split('x');
-                if (parts.Length == 2 && 
-                    int.TryParse(parts[0], out int width) && 
-                    int.TryParse(parts[1], out int height))
+                keepAspectRatio = menuItem.IsChecked;
+                Console.WriteLine($"[DEBUG] Keep aspect ratio: {keepAspectRatio}");
+                
+                // Update window behavior
+                UpdateWindowAspectRatio();
+            }
+        }
+
+        private void UpdateWindowAspectRatio()
+        {
+            if (keepAspectRatio)
+            {
+                // Adjust window size to maintain aspect ratio
+                double currentRatio = this.Width / this.Height;
+                
+                if (Math.Abs(currentRatio - originalAspectRatio) > 0.01)
                 {
-                    // Apply resolution to window size
-                    this.Width = width;
-                    this.Height = height;
-                    
-                    // Ensure window stays on screen
-                    EnsureWindowVisible();
-                    
-                    // Refresh display to show new size
-                    videoCaptureElement?.RefreshDisplay();
+                    // Adjust height to match aspect ratio based on current width
+                    this.Height = this.Width / originalAspectRatio;
+                    Console.WriteLine($"[DEBUG] Adjusted window to maintain aspect ratio: {this.Width}x{this.Height}");
                 }
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error applying resolution: {ex.Message}");
-            }
         }
 
-        protected override void OnClosed(EventArgs e)
+        private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            SaveSettings();
-            videoCaptureElement?.Dispose();
-            base.OnClosed(e);
+            if (keepAspectRatio && originalAspectRatio > 0)
+            {
+                Console.WriteLine($"[DEBUG] Window size changed to {e.NewSize.Width}x{e.NewSize.Height}");
+                
+                // Calculate what the height should be based on the new width
+                double targetHeight = e.NewSize.Width / originalAspectRatio;
+                
+                // Only adjust if the difference is significant (avoid infinite loops)
+                if (Math.Abs(e.NewSize.Height - targetHeight) > 2)
+                {
+                    this.Height = targetHeight;
+                    Console.WriteLine($"[DEBUG] Adjusted height to {targetHeight} to maintain aspect ratio {originalAspectRatio:F2}");
+                }
+            }
         }
     }
 }

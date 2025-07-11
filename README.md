@@ -20,8 +20,8 @@ A frameless camera overlay application for Windows 11 designed for elderly users
 - **🖼️ Frameless Design**: Clean camera display without borders or title bar
 - **📌 Always On Top**: Stays visible over all other applications
 - **🎯 Drag & Drop**: Click and drag to position anywhere on screen
-- **📏 Resizable**: Resize the camera window with live preview
-- **🖱️ Right-Click Menu**: Easy access to camera settings and options
+- **📏 Free Resizing**: Resize the camera window by dragging corners - no restrictions!
+- **🖱️ Right-Click Menu**: Camera selection and settings
 - **💾 Auto-Save Settings**: Remembers window position, size, and camera preferences
 - **🔒 Single Instance**: Prevents multiple instances from running
 - **🌟 Drop Shadow**: Subtle shadow for better visibility

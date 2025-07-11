@@ -159,13 +159,19 @@ namespace CameraOverlay
             {
                 Console.WriteLine("[DEBUG] Stopping OpenCV camera capture...");
                 
-                captureTimer?.Stop();
-                captureTimer?.Tick -= async (s, e) => await CaptureFrame();
-                captureTimer = null;
+                if (captureTimer != null)
+                {
+                    captureTimer.Stop();
+                    captureTimer.Tick -= async (s, e) => await CaptureFrame();
+                    captureTimer = null;
+                }
 
-                capture?.Release();
-                capture?.Dispose();
-                capture = null;
+                if (capture != null)
+                {
+                    capture.Release();
+                    capture.Dispose();
+                    capture = null;
+                }
 
                 isCapturing = false;
                 Console.WriteLine("[DEBUG] OpenCV camera capture stopped");
