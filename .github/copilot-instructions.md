@@ -17,12 +17,13 @@ This is a WPF application that creates a frameless camera overlay window for Win
 - Built with .NET 9.0 WPF
 - Uses Win32 API for always-on-top behavior
 - JSON-based settings persistence
-- MediaElement for video display (placeholder implementation)
+- OpenCV for video display
 - WMI and Registry-based camera detection
 - Latest NuGet packages (System.Management v9.0.7)
 
 ## Development Notes
-- The camera implementation is currently a placeholder and would need DirectShow or Media Foundation integration for actual camera capture
+- The camera implementation is need to be actual camera capture
 - The application is designed to work alongside Windows Game Bar for screen recording
 - Focus on simplicity and ease of use for elderly users
-- Version 1.3.0 includes .NET 9.0 upgrade for cutting-edge performance
+- Every time make changes, ensure increase version number and update the changelog, also update the README.md with new features or changes
+- Always keep committing your changes with clear messages when make changes to the codebase
