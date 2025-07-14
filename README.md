@@ -21,10 +21,18 @@ A frameless camera overlay application for Windows 11 designed for elderly users
 - **📌 Always On Top**: Stays visible over all other applications
 - **🎯 Drag & Drop**: Click and drag to position anywhere on screen
 - **📏 Free Resizing**: Resize the camera window by dragging corners - no restrictions!
-- **🖱️ Right-Click Menu**: Camera selection and settings
+- **🖱️ Right-Click Menu**: Camera selection and Game Bar recording controls
 - **💾 Auto-Save Settings**: Remembers window position, size, and camera preferences
 - **🔒 Single Instance**: Prevents multiple instances from running
 - **🌟 Drop Shadow**: Subtle shadow for better visibility
+
+### 🎮 Game Bar Recording Integration
+- **⏺️ One-Click Recording**: Start/stop Game Bar recording from right-click menu
+- **🎮 Direct Game Bar Access**: Open Game Bar instantly (Win+G)
+- **❓ Built-in Help**: Comprehensive Game Bar guidance for elderly users
+- **🔄 Multiple Methods**: Protocol launch + keyboard shortcuts for reliability
+- **📱 Status Messages**: Visual feedback about recording state
+- **🎯 Perfect for Elderly Users**: No need to remember keyboard shortcuts!
 
 ### Smart Features
 - **📊 Real-time Size Display**: Shows current window dimensions (e.g., 300x405)

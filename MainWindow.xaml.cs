@@ -92,6 +92,24 @@ namespace CameraOverlay
             };
             
             Console.WriteLine("[DEBUG] SetupWindow completed");
+            
+            // Prevent Game Bar from detecting this as a game
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Clear any existing Game Bar game memory
+                    await GameBarHelper.ClearGameBarGameMemory();
+                    
+                    // Wait for window to be fully loaded before applying Game Bar prevention
+                    await Task.Delay(1000);
+                    await GameBarHelper.PreventGameBarDetection(this);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DEBUG] Game Bar prevention failed: {ex.Message}");
+                }
+            });
         }
 
         private async Task InitializeCameraAsync()
@@ -168,6 +186,19 @@ namespace CameraOverlay
                 Console.WriteLine($"[ERROR] InitializeCameraAsync failed: {ex.Message}");
                 Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
                 AddErrorMessage($"Camera initialization failed:\n{ex.Message}");
+            }
+            finally
+            {
+                // Ensure camera window is visible for manual Game Bar recording
+                try
+                {
+                    await GameBarHelper.EnsureCameraInRecording(this);
+                    Console.WriteLine("[DEBUG] Camera window prepared for Game Bar recording");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DEBUG] Failed to prepare camera for recording: {ex.Message}");
+                }
             }
         }
 
@@ -260,18 +291,19 @@ namespace CameraOverlay
         private void Window_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
         {
             Console.WriteLine("[DEBUG] Right mouse button clicked - showing context menu");
+            Console.WriteLine($"[DEBUG] Camera capturing: {cameraCapture?.IsCapturing}");
             ShowContextMenu();
         }
 
-        private async void ShowContextMenu()
+        private void ShowContextMenu()
         {
             try
             {
                 var contextMenu = new ContextMenu();
                 
-                // Camera selection menu
+                // Camera selection menu (populate synchronously to avoid blocking)
                 var cameraMenuItem = new MenuItem { Header = "Camera" };
-                await PopulateCameraMenu(cameraMenuItem);
+                PopulateCameraMenuSync(cameraMenuItem);
                 contextMenu.Items.Add(cameraMenuItem);
                 
                 // Note: Resolution menu removed - users can now freely resize the window
@@ -301,6 +333,27 @@ namespace CameraOverlay
                 // Separator
                 contextMenu.Items.Add(new Separator());
                 
+                // Simple Game Bar Recording
+                var recordingItem = new MenuItem 
+                { 
+                    Header = GameBarHelper.IsRecording ? "⏹️ Stop Recording" : "⏺️ Start Recording"
+                };
+                recordingItem.Click += async (s, e) => await ToggleRecording();
+                contextMenu.Items.Add(recordingItem);
+                
+                // Game Bar Help (simplified)
+                var gameBarHelpItem = new MenuItem { Header = "❓ Recording Help" };
+                gameBarHelpItem.Click += (s, e) => GameBarHelper.ShowGameBarInfo();
+                contextMenu.Items.Add(gameBarHelpItem);
+                
+                // Game Bar Diagnostics
+                var diagnosticsItem = new MenuItem { Header = "🔍 Game Bar Diagnostics" };
+                diagnosticsItem.Click += (s, e) => ShowGameBarDiagnostics();
+                contextMenu.Items.Add(diagnosticsItem);
+                
+                // Separator
+                contextMenu.Items.Add(new Separator());
+                
                 // Exit menu
                 var exitMenuItem = new MenuItem { Header = "Exit" };
                 exitMenuItem.Click += (s, e) => 
@@ -312,6 +365,22 @@ namespace CameraOverlay
                 
                 contextMenu.IsOpen = true;
                 Console.WriteLine("[DEBUG] Context menu opened");
+                
+                // Ensure camera keeps running
+                if (cameraCapture != null && cameraCapture.IsCapturing)
+                {
+                    Console.WriteLine("[DEBUG] Camera still capturing after context menu opened");
+                }
+                
+                // Add event handler for when context menu closes
+                contextMenu.Closed += (s, e) =>
+                {
+                    Console.WriteLine("[DEBUG] Context menu closed");
+                    if (cameraCapture != null && cameraCapture.IsCapturing)
+                    {
+                        Console.WriteLine("[DEBUG] Camera still capturing after context menu closed");
+                    }
+                };
             }
             catch (Exception ex)
             {
@@ -341,6 +410,60 @@ namespace CameraOverlay
             }
             
             Console.WriteLine("[DEBUG] MainWindow closed");
+        }
+
+        private void PopulateCameraMenuSync(MenuItem cameraMenuItem)
+        {
+            try
+            {
+                Console.WriteLine("[DEBUG] Populating camera menu (sync)...");
+                
+                // Use a simpler approach - just show the current camera and a "Switch Camera" option
+                // This avoids async operations that could interfere with camera capture
+                
+                if (cameraCapture != null && cameraCapture.IsCapturing)
+                {
+                    // Show current camera
+                    var currentCameraItem = new MenuItem 
+                    { 
+                        Header = $"✓ Camera {cameraCapture.CameraIndex + 1} (Active)",
+                        IsEnabled = false
+                    };
+                    cameraMenuItem.Items.Add(currentCameraItem);
+                    
+                    // Add separator
+                    cameraMenuItem.Items.Add(new Separator());
+                    
+                    // Add switch options for first few cameras
+                    for (int i = 0; i < 3; i++) // Check first 3 cameras
+                    {
+                        if (i != cameraCapture.CameraIndex) // Don't show current camera again
+                        {
+                            var switchItem = new MenuItem 
+                            { 
+                                Header = $"Switch to Camera {i + 1}"
+                            };
+                            
+                            int cameraIndex = i; // Capture for closure
+                            switchItem.Click += async (s, e) => await SwitchCamera(cameraIndex);
+                            cameraMenuItem.Items.Add(switchItem);
+                        }
+                    }
+                }
+                else
+                {
+                    var noCameraItem = new MenuItem { Header = "No camera active", IsEnabled = false };
+                    cameraMenuItem.Items.Add(noCameraItem);
+                }
+                
+                Console.WriteLine("[DEBUG] Camera menu populated (sync)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to populate camera menu (sync): {ex.Message}");
+                var errorItem = new MenuItem { Header = "Error loading cameras", IsEnabled = false };
+                cameraMenuItem.Items.Add(errorItem);
+            }
         }
 
         private async Task PopulateCameraMenu(MenuItem cameraMenuItem)
@@ -461,6 +584,115 @@ namespace CameraOverlay
                     this.Height = targetHeight;
                     Console.WriteLine($"[DEBUG] Adjusted height to {targetHeight} to maintain aspect ratio {originalAspectRatio:F2}");
                 }
+            }
+        }
+
+        private async Task ToggleRecording()
+        {
+            try
+            {
+                Console.WriteLine("[DEBUG] Toggle recording clicked");
+                
+                if (GameBarHelper.IsRecording)
+                {
+                    Console.WriteLine("[DEBUG] Stopping Game Bar screen recording...");
+                    bool success = await GameBarHelper.StopRecordingAsync();
+                    
+                    if (success)
+                    {
+                        AddStatusMessage("📹 Screen recording stopped");
+                    }
+                    else
+                    {
+                        AddErrorMessage("Failed to stop Game Bar recording.\nTry using Win+Alt+R manually.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("[DEBUG] Starting Game Bar screen recording...");
+                    
+                    // Pass this window to GameBar helper so it can hide it during recording startup
+                    bool success = await GameBarHelper.StartRecordingAsync(this);
+                    
+                    if (success)
+                    {
+                        AddStatusMessage("🔴 Game Bar recording started!\nRecording entire desktop including camera overlay.\n\nNOTE: Camera window hidden completely during startup to prevent Game Bar from detecting it as a 'game'.\nWindow will reappear and be visible in recording.");
+                    }
+                    else
+                    {
+                        AddErrorMessage("Failed to start Game Bar recording.\n\nTROUBLESHOOTING:\n1. Check 🔍 Game Bar Diagnostics for issues\n2. If error 0x8232360F occurs, restart application\n3. Ensure Game Bar is enabled in Settings\n4. Try Win+Alt+R manually\n5. Check if camera is detected as 'game'");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] ToggleRecording failed: {ex.Message}");
+                AddErrorMessage($"Error with Game Bar recording: {ex.Message}");
+            }
+        }
+
+        private async Task OpenGameBar()
+        {
+            try
+            {
+                Console.WriteLine("[DEBUG] Opening Game Bar...");
+                bool success = await GameBarHelper.OpenGameBarAsync();
+                
+                if (success)
+                {
+                    AddStatusMessage("🎮 Game Bar opened!\nYou can now access recording controls.");
+                }
+                else
+                {
+                    AddErrorMessage("Failed to open Game Bar.\nTry using Win+G manually.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] OpenGameBar failed: {ex.Message}");
+                AddErrorMessage($"Error opening Game Bar: {ex.Message}");
+            }
+        }
+
+        private void AddStatusMessage(string message)
+        {
+            try
+            {
+                // Show a temporary status message (you could enhance this with a status bar or tooltip)
+                Console.WriteLine($"[STATUS] {message}");
+                
+                // For now, just show in title briefly
+                var originalTitle = this.Title;
+                this.Title = message;
+                
+                // Reset title after 3 seconds
+                Task.Delay(3000).ContinueWith(_ =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (this.Title == message) // Only reset if it hasn't changed
+                        {
+                            this.Title = originalTitle;
+                        }
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] AddStatusMessage failed: {ex.Message}");
+            }
+        }
+
+        private void ShowGameBarDiagnostics()
+        {
+            try
+            {
+                string diagnostics = GameBarHelper.GetGameBarDiagnostics();
+                MessageBox.Show(diagnostics, "Game Bar Diagnostics", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error getting diagnostics: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

@@ -8,8 +8,9 @@
         MinWidth="100"
         WindowStyle="None"
         ResizeMode="CanResizeWithGrip"
-        AllowsTransparency="True"
-        Background="Transparent"
+        AllowsTransparency="False"
+        Background="Black"
+        ShowInTaskbar="False"
         Topmost="True">
     
     <Grid Name="MainGrid" Background="Black">
