@@ -458,50 +458,44 @@ namespace CameraOverlay
         /// </summary>
         public static void ShowGameBarInfo()
         {
-            string message = @"🎮 Game Bar Desktop Recording Help
+            string message = @"🎮 Screen Recording Options
 
-PROBLEM SOLVED:
-Game Bar was detecting Camera Overlay as a 'game' causing recording issues and error 0x8232360F.
+TWO RECORDING METHODS AVAILABLE:
 
-NEW SOLUTION:
-1. Right-click camera → 'Start Recording'
-2. Camera window completely disappears (hidden from Game Bar)
-3. Game Bar records ENTIRE DESKTOP (not just camera window)
-4. Camera window reappears after 3 seconds and is visible in recording
+🎯 METHOD 1: Game Bar Recording (Windows 11)
+• Right-click camera → 'Start Game Bar Recording'
+• Records entire desktop with camera overlay visible
+• Uses Windows Game Bar (Win+Alt+R)
+• May have compatibility issues with some systems
 
-HOW IT WORKS:
-• Camera window is completely hidden (minimized + hidden + removed from taskbar)
-• This prevents Game Bar from detecting it as a 'game' to record
-• Game Bar defaults to desktop recording instead
-• Camera window reappears and is captured as part of desktop recording
+🎯 METHOD 2: Custom Screen Recording (NEW!)
+• Right-click camera → 'Start Custom Recording'
+• Records entire desktop with camera overlay marked
+• Creates high-quality MP4 video files
+• Works independently of Windows Game Bar
+• Saves to Desktop by default
 
-PREVENTING GAME DETECTION:
-• App configures itself as a 'tool window' not a 'game'
-• Clears Game Bar registry entries that remember it as a game
-• Uses window properties that avoid game detection
+CUSTOM RECORDING FEATURES:
+• Full desktop capture at 30 FPS
+• Camera window position highlighted with red border
+• Recording indicator shows 'REC' status
+• Automatic video file creation (MP4 format)
+• No Game Bar dependencies or conflicts
 
-MANUAL RECORDING:
-• Win+Alt+R now works properly for desktop recording
-• Camera positioned optimally and visible in recording
-
-TROUBLESHOOTING ERROR 0x8232360F:
-• This error occurs when Game Bar tries to record the camera as a 'game'
-• Solution: Use context menu recording (prevents game detection)
-• If error persists: Restart application to clear Game Bar memory
+TROUBLESHOOTING:
+• If Game Bar recording fails, use Custom Recording
+• Custom recording works on all Windows versions
+• Output files saved to Desktop folder
+• Red border shows camera overlay area in recording
 
 KEYBOARD SHORTCUTS:
-• Win + Alt + R = Start/Stop Desktop Recording
-• Win + G = Open Game Bar
+• Win + Alt + R = Game Bar Recording (if enabled)
+• Right-click menu = Access both recording methods
 
-IMPORTANT NOTES:
-• Records ENTIRE DESKTOP (all windows, desktop, etc.)
-• Camera overlay visible in recording after it reappears
-• No more 'game' detection issues
-• Error 0x8232360F should be eliminated
+RECOMMENDED:
+Use Custom Recording for reliable desktop + camera recording without Game Bar issues!";
 
-The camera overlay now uses advanced Game Bar evasion to ensure proper desktop recording!";
-
-            MessageBox.Show(message, "Game Bar Desktop Recording Help", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(message, "Screen Recording Help", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         /// <summary>
@@ -891,7 +885,6 @@ The camera overlay now uses advanced Game Bar evasion to ensure proper desktop r
                 return false;
             }
         }
-        }
 
         /// <summary>
         /// Starts desktop recording with Game Bar, ensuring camera window is configured correctly
@@ -961,3 +954,83 @@ The camera overlay now uses advanced Game Bar evasion to ensure proper desktop r
                 Console.WriteLine($"[ERROR] Failed to start desktop recording: {ex.Message}");
                 return false;
             }
+        }
+
+        private static ScreenRecorder screenRecorder;
+
+        /// <summary>
+        /// Start custom screen recording with camera overlay
+        /// </summary>
+        public static async Task<bool> StartCustomScreenRecordingAsync(Window cameraWindow, CameraSettings settings)
+        {
+            try
+            {
+                if (screenRecorder != null && screenRecorder.IsRecording)
+                {
+                    Console.WriteLine("[DEBUG] Screen recording is already in progress");
+                    return false;
+                }
+
+                Console.WriteLine("[DEBUG] Starting custom screen recording...");
+                
+                screenRecorder = new ScreenRecorder(settings, cameraWindow);
+                bool started = await screenRecorder.StartRecordingAsync();
+                
+                if (started)
+                {
+                    isRecording = true;
+                    Console.WriteLine("[DEBUG] ✓ Custom screen recording started successfully");
+                }
+                
+                return started;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to start custom screen recording: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Stop custom screen recording
+        /// </summary>
+        public static async Task<bool> StopCustomScreenRecordingAsync()
+        {
+            try
+            {
+                if (screenRecorder == null || !screenRecorder.IsRecording)
+                {
+                    Console.WriteLine("[DEBUG] No custom screen recording in progress");
+                    return true;
+                }
+
+                Console.WriteLine("[DEBUG] Stopping custom screen recording...");
+                
+                bool stopped = await screenRecorder.StopRecordingAsync();
+                if (stopped)
+                {
+                    isRecording = false;
+                    Console.WriteLine($"[DEBUG] ✓ Custom screen recording saved to: {screenRecorder.OutputPath}");
+                }
+                
+                screenRecorder?.Dispose();
+                screenRecorder = null;
+                
+                return stopped;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to stop custom screen recording: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Check if custom screen recording is active
+        /// </summary>
+        public static bool IsCustomRecordingActive()
+        {
+            return screenRecorder != null && screenRecorder.IsRecording;
+        }
+    }
+}

@@ -1,8 +1,13 @@
 {
-  "WindowLeft": 958.4000000000001,
-  "WindowTop": 100,
-  "WindowWidth": 477.6,
-  "WindowHeight": 358.40000000000003,
+  "WindowLeft": 1336.8000000000002,
+  "WindowTop": 669.6,
+  "WindowWidth": 191.20000000000002,
+  "WindowHeight": 143.20000000000002,
   "SelectedCameraName": "Remote Desktop Camera Bus",
-  "SelectedResolution": "800x600"
+  "SelectedResolution": "800x600",
+  "RecordingFrameRate": 30,
+  "RecordingQuality": 70,
+  "RecordingOutputPath": "",
+  "IncludeCameraOverlay": true,
+  "RecordAudio": false
 }

@@ -17,6 +17,7 @@ namespace CameraOverlay
         private Point dragStartPoint;
         private CameraSettings settings;
         private readonly string settingsPath = "camera_settings.json";
+        private RecordingToolbar recordingToolbar;
 
         // Win32 API imports for always-on-top
         [DllImport("user32.dll")]
@@ -39,6 +40,9 @@ namespace CameraOverlay
                 InitializeComponent();
                 LoadSettings();
                 SetupWindow();
+                
+                // Initialize recording toolbar
+                recordingToolbar = new RecordingToolbar(this);
                 
                 // Wire up event handlers programmatically
                 this.MouseLeftButtonDown += Window_MouseLeftButtonDown;
@@ -92,24 +96,6 @@ namespace CameraOverlay
             };
             
             Console.WriteLine("[DEBUG] SetupWindow completed");
-            
-            // Prevent Game Bar from detecting this as a game
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    // Clear any existing Game Bar game memory
-                    await GameBarHelper.ClearGameBarGameMemory();
-                    
-                    // Wait for window to be fully loaded before applying Game Bar prevention
-                    await Task.Delay(1000);
-                    await GameBarHelper.PreventGameBarDetection(this);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[DEBUG] Game Bar prevention failed: {ex.Message}");
-                }
-            });
         }
 
         private async Task InitializeCameraAsync()
@@ -131,9 +117,20 @@ namespace CameraOverlay
                 Grid mainGrid = this.FindName("MainGrid") as Grid;
                 if (mainGrid != null)
                 {
-                    Console.WriteLine("[DEBUG] Found MainGrid, clearing and adding camera capture");
-                    mainGrid.Children.Clear();
-                    mainGrid.Children.Add(cameraCapture);
+                    Console.WriteLine("[DEBUG] Found MainGrid, clearing camera content only and adding new camera capture");
+                    
+                    // Remove any existing camera capture elements (but preserve UI controls)
+                    for (int i = mainGrid.Children.Count - 1; i >= 0; i--)
+                    {
+                        var child = mainGrid.Children[i];
+                        if (child is OpenCVCameraCapture)
+                        {
+                            mainGrid.Children.RemoveAt(i);
+                        }
+                    }
+                    
+                    // Add new camera capture element
+                    mainGrid.Children.Insert(0, cameraCapture); // Insert at beginning so UI controls are on top
                 }
                 else
                 {
@@ -187,19 +184,6 @@ namespace CameraOverlay
                 Console.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
                 AddErrorMessage($"Camera initialization failed:\n{ex.Message}");
             }
-            finally
-            {
-                // Ensure camera window is visible for manual Game Bar recording
-                try
-                {
-                    await GameBarHelper.EnsureCameraInRecording(this);
-                    Console.WriteLine("[DEBUG] Camera window prepared for Game Bar recording");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[DEBUG] Failed to prepare camera for recording: {ex.Message}");
-                }
-            }
         }
 
         private void AddErrorMessage(string message)
@@ -223,8 +207,16 @@ namespace CameraOverlay
             Grid mainGrid = this.FindName("MainGrid") as Grid;
             if (mainGrid != null)
             {
-                mainGrid.Children.Clear();
-                mainGrid.Children.Add(errorText);
+                // Remove any existing camera capture elements (but preserve UI controls)
+                for (int i = mainGrid.Children.Count - 1; i >= 0; i--)
+                {
+                    var child = mainGrid.Children[i];
+                    if (child is OpenCVCameraCapture)
+                    {
+                        mainGrid.Children.RemoveAt(i);
+                    }
+                }
+                mainGrid.Children.Insert(0, errorText); // Insert at beginning so UI controls are on top
             }
             else
             {
@@ -329,27 +321,16 @@ namespace CameraOverlay
                 };
                 aspectRatioMenuItem.Click += AspectRatio_Click;
                 contextMenu.Items.Add(aspectRatioMenuItem);
-                
-                // Separator
+                  // Separator
                 contextMenu.Items.Add(new Separator());
-                
-                // Simple Game Bar Recording
-                var recordingItem = new MenuItem 
+
+                // Recording toolbar menu item
+                var recordingMenuItem = new MenuItem 
                 { 
-                    Header = GameBarHelper.IsRecording ? "⏹️ Stop Recording" : "⏺️ Start Recording"
+                    Header = "🎬 Show Recording Toolbar"
                 };
-                recordingItem.Click += async (s, e) => await ToggleRecording();
-                contextMenu.Items.Add(recordingItem);
-                
-                // Game Bar Help (simplified)
-                var gameBarHelpItem = new MenuItem { Header = "❓ Recording Help" };
-                gameBarHelpItem.Click += (s, e) => GameBarHelper.ShowGameBarInfo();
-                contextMenu.Items.Add(gameBarHelpItem);
-                
-                // Game Bar Diagnostics
-                var diagnosticsItem = new MenuItem { Header = "🔍 Game Bar Diagnostics" };
-                diagnosticsItem.Click += (s, e) => ShowGameBarDiagnostics();
-                contextMenu.Items.Add(diagnosticsItem);
+                recordingMenuItem.Click += (s, e) => ShowRecordingToolbar();
+                contextMenu.Items.Add(recordingMenuItem);
                 
                 // Separator
                 contextMenu.Items.Add(new Separator());
@@ -394,6 +375,8 @@ namespace CameraOverlay
             // Set always on top
             var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
             SetWindowPos(handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            
+            Console.WriteLine("[DEBUG] Window loaded successfully");
         }
 
         private void Window_Closing(object sender, CancelEventArgs e)
@@ -401,6 +384,9 @@ namespace CameraOverlay
             Console.WriteLine("[DEBUG] MainWindow closing...");
             
             SaveSettings();
+            
+            // Close recording toolbar
+            recordingToolbar?.ForceClose();
             
             if (cameraCapture != null)
             {
@@ -658,10 +644,10 @@ namespace CameraOverlay
         {
             try
             {
-                // Show a temporary status message (you could enhance this with a status bar or tooltip)
+                // Show a temporary status message (console only)
                 Console.WriteLine($"[STATUS] {message}");
                 
-                // For now, just show in title briefly
+                // Show in window title temporarily
                 var originalTitle = this.Title;
                 this.Title = message;
                 
@@ -683,17 +669,19 @@ namespace CameraOverlay
             }
         }
 
-        private void ShowGameBarDiagnostics()
+        private void ShowRecordingToolbar()
         {
             try
             {
-                string diagnostics = GameBarHelper.GetGameBarDiagnostics();
-                MessageBox.Show(diagnostics, "Game Bar Diagnostics", MessageBoxButton.OK, MessageBoxImage.Information);
+                Console.WriteLine("[DEBUG] Showing recording toolbar");
+                recordingToolbar?.Show();
+                recordingToolbar?.Activate();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error getting diagnostics: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Console.WriteLine($"[ERROR] ShowRecordingToolbar failed: {ex.Message}");
             }
         }
+
     }
 }
